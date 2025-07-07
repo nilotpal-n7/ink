@@ -68,9 +68,12 @@ pub fn read_tree_of_commit(commit_hash: &str) -> Result<String> {
     let commit_path = Path::new(".ink").join("objects").join(&commit_hash[..2]).join(&commit_hash[2..]); // use your existing logic
     let content = read(commit_path)?;
     let decompressed = decompress(content)?;
-    let text = std::str::from_utf8(&decompressed)?;
+    
+    let (_, body) = std::str::from_utf8(&decompressed)?
+        .split_once('\0')
+        .ok_or_else(|| anyhow!("Invalid commit object format: no null byte"))?;
 
-    for line in text.lines() {
+    for line in body.lines() {
         if line.starts_with("tree ") {
             return Ok(line[5..].trim().to_string());
         }
