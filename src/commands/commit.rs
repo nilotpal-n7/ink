@@ -8,7 +8,7 @@ pub fn run(message: String, a: bool) -> Result<()> {
         commands::add::run(AddMode::Update)?
     }
 
-
+    
 
     Ok(())
 }
