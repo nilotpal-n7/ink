@@ -122,10 +122,10 @@ pub fn create_tree() -> Result<String> {
                 let header = format!("tree {}\0", tree_bytes.len());
                 let full = [header.as_bytes(), &tree_bytes].concat();
                 let hash = hash_object(&full).expect("hash failed");
-                let compressed = compress(full).expect("compress failed");
 
                 let obj_path = PathBuf::from(format!(".ink/objects/{}/{}", &hash[..2], &hash[2..]));
                 if !obj_path.exists() {
+                    let compressed = compress(full).expect("compress failed");
                     create_dir_all(obj_path.parent().unwrap()).expect("mkdir failed");
                     write(obj_path, compressed).expect("write failed");
                 }
@@ -162,16 +162,13 @@ pub fn create_commit(tree: &str, parent: Option<&str>, message: &str, author: &s
     let header = format!("commit {}\0", content.len());
     let full = [header.as_bytes(), content.as_bytes()].concat();
     let hash = hash_object(&full)?;
-    let compressed = compress(full)?;
 
     let obj_path = PathBuf::from(format!(".ink/objects/{}/{}", &hash[..2], &hash[2..]));
     if !obj_path.exists() {
+        let compressed = compress(full)?;
         create_dir_all(obj_path.parent().unwrap())?;
         write(&obj_path, compressed)?;
     }
-
-    // Optionally update HEAD
-    write(".ink/HEAD", hash.as_bytes())?;
 
     Ok(hash)
 }

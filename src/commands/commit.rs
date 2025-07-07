@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::{ anyhow, Result };
 
 use crate::commands;
+use crate::commands::branch::read_current_branch;
 use crate::utils::enums::AddMode;
 use crate::utils::object::{create_commit, create_tree };
 
@@ -14,13 +15,13 @@ pub fn run(message: String, a: bool) -> Result<()> {
     let tree_hash = create_tree()?;
     let parent_hash = read_current_commit().ok(); // Allow first commit
     let comment_hash = create_commit(&tree_hash, parent_hash.as_deref(), &message, "Nilotpal Gupta")?;
-    update_head(&comment_hash)?;
+    update_current_commit(&comment_hash)?;
 
     Ok(())
 }
 
 pub fn read_current_commit() -> Result<String> {
-    let root = Path::new(".mygit");
+    let root = Path::new(".ink");
     let head_path = root.join("HEAD");
 
     let head_contents = read_to_string(&head_path)?;
@@ -42,21 +43,11 @@ pub fn read_current_commit() -> Result<String> {
     Ok(commit_hash)
 }
 
-pub fn update_head(new_hash: &str) -> Result<()> {
-    let root = Path::new(".mygit");
-    let head_path = root.join("HEAD");
-
-    let head_contents = read_to_string(&head_path)?.trim().to_string();
-
-    if head_contents.starts_with("ref:") {
-        // Symbolic ref, like: "ref: refs/heads/main"
-        let ref_path = head_contents.trim_start_matches("ref:").trim();
-        let full_ref_path = root.join(ref_path);
-        write(full_ref_path, format!("{}\n", new_hash))?;
-    } else {
-        // Detached HEAD – write the hash directly to HEAD
-        write(head_path, format!("{}\n", new_hash))?;
-    }
+pub fn update_current_commit(new_hash: &str) -> Result<()> {
+    let root = Path::new(".ink");
+    let current_branch = read_current_branch()?;
+    let head_path = root.join("refs").join("heads").join(current_branch);
+    write(head_path, new_hash)?;
 
     Ok(())
 }
