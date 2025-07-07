@@ -1,4 +1,4 @@
-use std::fs::{read_to_string, write};
+use std::fs::{read, read_to_string, write};
 use std::path::Path;
 use anyhow::{ anyhow, Result };
 
@@ -6,6 +6,7 @@ use crate::commands;
 use crate::commands::branch::read_current_branch;
 use crate::utils::enums::AddMode;
 use crate::utils::object::{create_commit, create_tree };
+use crate::utils::zip::decompress;
 
 pub fn run(message: String, a: bool) -> Result<()> {
     if a {
@@ -13,7 +14,18 @@ pub fn run(message: String, a: bool) -> Result<()> {
     }
 
     let tree_hash = create_tree()?;
-    let parent_hash = read_current_commit().ok(); // Allow first commit
+
+    // Try reading the previous commit's tree hash
+    let parent_hash = read_current_commit().ok();
+    if let Some(ref parent) = parent_hash {
+        let parent_tree = read_tree_of_commit(parent)?;
+
+        if tree_hash == parent_tree {
+            println!("Nothing to commit — working tree matches last commit.");
+            return Ok(());
+        }
+    }
+
     let comment_hash = create_commit(&tree_hash, parent_hash.as_deref(), &message, "Nilotpal Gupta")?;
     update_current_commit(&comment_hash)?;
 
@@ -50,4 +62,18 @@ pub fn update_current_commit(new_hash: &str) -> Result<()> {
     write(head_path, new_hash)?;
 
     Ok(())
+}
+
+pub fn read_tree_of_commit(commit_hash: &str) -> Result<String> {
+    let commit_path = Path::new(".ink").join("objects").join(&commit_hash[..2]).join(&commit_hash[2..]); // use your existing logic
+    let content = read(commit_path)?;
+    let decompressed = decompress(content)?;
+    let text = std::str::from_utf8(&decompressed)?;
+
+    for line in text.lines() {
+        if line.starts_with("tree ") {
+            return Ok(line[5..].trim().to_string());
+        }
+    }
+    Err(anyhow!("No tree found in commit {}", commit_hash))
 }
