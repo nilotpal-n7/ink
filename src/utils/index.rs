@@ -1,10 +1,10 @@
 use std::collections::HashMap;
-use std::fs::{read, read_to_string, File};
+use std::fs::{read_to_string, File};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use anyhow::Result;
 
-use crate::utils::hash::hash_object;
+use crate::utils::object::create_blob;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IndexEntry {
@@ -67,9 +67,7 @@ pub fn add_files_to_index(files: &[PathBuf]) -> Result<()> {
     let mut index = Index::load()?;
 
     for path in files {
-        let data = read(path)?;
-        let hash = hash_object(&data)?;
-
+        let hash = create_blob(path.clone())?;
         let rel_path = path.strip_prefix(".").unwrap_or(path);
 
         index.add(IndexEntry {

@@ -19,7 +19,7 @@ struct Cli {
 enum Commands {
     Init {
         #[arg(short)]
-        h: Option<String>,
+        a: Option<String>,
 
         #[arg(short)]
         z: bool,
@@ -43,8 +43,8 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init { h, z } => {
-            if let Some(hash) = h {
+        Commands::Init { a, z } => {
+            if let Some(hash) = a {
                 commands::init::run(HashAlgo::from_str(&hash)?, z)?
             }
             commands::init::run(HashAlgo::default(), z)?

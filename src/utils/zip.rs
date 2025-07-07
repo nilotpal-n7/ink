@@ -6,31 +6,28 @@ use std::path::Path;
 use anyhow::{Result, anyhow};
 
 /// Compresses the input using zlib (if zip is enabled), or stores raw
-pub fn compress(object_type: &str, content: &[u8]) -> Result<Vec<u8>> {
+pub fn compress(content: Vec<u8>) -> Result<Vec<u8>> {
     let zip = load_is_zip()?; // Default to true if config unreadable
-
-    let header = format!("{} {}\0", object_type, content.len());
-    let full = [header.as_bytes(), content].concat();
 
     if zip {
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(&full)?;
+        encoder.write_all(&content)?;
         Ok(encoder.finish()?)
     } else {
-        Ok(full)
+        Ok(content)
     }
 }
 
 /// Decompresses zlib-compressed blob or returns raw if zip is disabled
-pub fn decompress(data: &[u8]) -> Result<Vec<u8>> {
+pub fn decompress(data: Vec<u8>) -> Result<Vec<u8>> {
     let zip = load_is_zip()?; // Default to true if config unreadable
 
     if zip {
         let mut decoder = ZlibDecoder::new(Vec::new());
-        decoder.write_all(data)?;
+        decoder.write_all(&data)?;
         Ok(decoder.finish()?)
     } else {
-        Ok(data.to_vec())
+        Ok(data)
     }
 }
 

@@ -4,3 +4,4 @@ pub mod zip;
 pub mod enums;
 pub mod index;
 pub mod ignore;
+pub mod object;

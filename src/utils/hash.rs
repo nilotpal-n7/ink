@@ -4,7 +4,6 @@ use std::path::Path;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 use blake3::Hasher;
-use std::io::Write;
 
 use crate::utils::enums::HashAlgo;
 
