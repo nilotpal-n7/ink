@@ -72,5 +72,6 @@ fn main() -> Result<()> {
         Commands::Branch { name } => commands::branch::run(name)?,
         Commands::Checkout { b, name } => commands::checkout::run(b, name)?,
     }
+
     Ok(())
 }

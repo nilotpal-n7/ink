@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::{create_dir_all, read, File};
+use std::fs::{create_dir_all, read, remove_file, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
-use std::sync::Mutex;
 
 use anyhow::{anyhow, Result};
 use dashmap::DashMap;
@@ -67,7 +66,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
             (true, Some(_), None) => {
                 // Delete only if current had it and target doesn't
                 if path.exists() {
-                    std::fs::remove_file(path)?;
+                    remove_file(path)?;
                 }
                 Ok(())
             }
@@ -87,13 +86,10 @@ pub fn run(b: bool, name: String) -> Result<()> {
         })
         .collect();
 
-    let new_index = Mutex::new(Index::default());
-    entries.par_iter().for_each(|entry| {
-        let mut idx = new_index.lock().unwrap();
-        idx.add(entry.clone());
-    });
-
-    let index = new_index.into_inner().unwrap();
+    let mut new_index = Index::default();
+    for entry in entries {
+        new_index.add(entry);
+    }
     index.save()?;
 
     println!("Switched to branch '{}'", name);
@@ -119,7 +115,7 @@ pub fn read_tree_recursive(
     let compressed = read(&obj_path)?;
     let data = decompress(compressed)?;
     let null_pos = data.iter().position(|&b| b == 0).ok_or_else(|| anyhow!("Invalid tree object"))?;
-    let content = &data[null_pos + 1..];
+    let content = &data[(null_pos + 1)..];
     let text = from_utf8(content)?;
 
     let subtasks: Vec<(PathBuf, String)> = text
@@ -129,10 +125,16 @@ pub fn read_tree_recursive(
                 return None;
             }
 
-            let mut parts = line.split_whitespace();
+            let tab_split: Vec<&str> = line.split('\t').collect();
+            if tab_split.len() != 2 {
+                return None;
+            }
+            let meta = tab_split[0];
+            let name = tab_split[1];
+            let mut parts = meta.split_whitespace();
+            let _mode = parts.next()?;
             let obj_type = parts.next()?;
             let obj_hash = parts.next()?;
-            let name = line.split('\t').nth(1)?;
 
             let full_path = prefix.join(name);
 
@@ -160,14 +162,14 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
         .join(&hash[..2])
         .join(&hash[2..]);
 
-    let compressed = std::fs::read(&obj_path)?;
+    let compressed = read(&obj_path)?;
     let data = decompress(compressed)?;
 
     let null_pos = data
         .iter()
         .position(|&b| b == 0)
         .ok_or_else(|| anyhow!("Invalid blob object"))?;
-    let content = &data[null_pos + 1..];
+    let content = &data[(null_pos + 1)..];
 
     if let Some(parent) = path.parent() {
         create_dir_all(parent)?;
@@ -184,7 +186,7 @@ pub fn is_clean(path: &Path, index_hash: Option<&String>) -> Result<bool> {
         return Ok(index_hash.is_none());
     }
 
-    let data = std::fs::read(path)?;
+    let data = read(path)?;
     let header = format!("blob {}\0", data.len());
     let full = [header.as_bytes(), &data].concat();
 
