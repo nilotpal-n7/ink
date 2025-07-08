@@ -1,17 +1,15 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::{create_dir_all, read, File, remove_file};
+use std::fs::{create_dir_all, read, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
-use std::sync::Mutex;
-
 use anyhow::{anyhow, Result};
-use dashmap::DashMap;
 use rayon::prelude::*;
+use dashmap::DashMap;
 
 use crate::commands;
 use crate::commands::branch::update_current_branch;
-use crate::commands::commit::{get_branch_commit, read_current_commit, read_tree_of_commit};
+use crate::commands::commit::{read_current_commit, read_tree_of_commit, get_branch_commit};
 use crate::utils::hash::hash_object;
 use crate::utils::index::{Index, IndexEntry};
 use crate::utils::zip::decompress;
@@ -21,12 +19,14 @@ pub fn run(b: bool, name: String) -> Result<()> {
         commands::branch::run(Some(name.clone()))?;
     }
 
+    // Step 1: Load current index and derive index map
     let index = Index::load()?;
     let index_map: HashMap<_, _> = index.entries
         .par_iter()
         .map(|(_, entry)| (entry.path.clone(), entry.hash.clone()))
         .collect();
 
+    // Step 2: Get current commit tree and target commit tree
     let current_commit = read_current_commit().ok();
     let current_tree = if let Some(commit) = &current_commit {
         get_tree_entries(&read_tree_of_commit(commit)?)?
@@ -38,6 +38,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
     let tree_hash = read_tree_of_commit(&target_commit)?;
     let target_tree = get_tree_entries(&tree_hash)?;
 
+    // Step 3: Compare all paths
     let all_paths: HashSet<_> = index_map
         .keys()
         .chain(current_tree.keys())
@@ -45,7 +46,6 @@ pub fn run(b: bool, name: String) -> Result<()> {
         .cloned()
         .collect();
 
-    // Validate and restore files
     all_paths.par_iter().try_for_each(|path| {
         let index_hash = index_map.get(path);
         let current_hash = current_tree.get(path);
@@ -60,19 +60,16 @@ pub fn run(b: bool, name: String) -> Result<()> {
             )),
             (true, Some(_), None) => {
                 if path.exists() {
-                    remove_file(path)?;
+                    std::fs::remove_file(path)?;
                 }
                 Ok(())
-            }
+            },
             (true, _, Some(target_hash)) => restore_blob(path, target_hash),
             _ => Ok(()),
         }
     })?;
 
-    // ✅ Update HEAD now that files are safe
-    update_current_branch(&name)?;
-
-    // ✅ Build and save updated index from target tree
+    // Step 4: After safe switch, update index for new branch tree
     let entries: Vec<IndexEntry> = target_tree
         .par_iter()
         .map(|(path, hash)| IndexEntry {
@@ -81,15 +78,14 @@ pub fn run(b: bool, name: String) -> Result<()> {
         })
         .collect();
 
-    let new_index = Mutex::new(Index::default());
-    entries.par_iter().for_each(|entry| {
-        let mut idx = new_index.lock().unwrap();
-        idx.add(entry.clone());
-    });
+    let mut new_index = Index::default();
+    for entry in entries {
+        new_index.add(entry);
+    }
+    new_index.save()?;
 
-    let index = new_index.into_inner().unwrap();
-    index.save()?;
-
+    // Step 5: Switch branch
+    update_current_branch(&name)?;
     println!("Switched to branch '{}'", name);
     Ok(())
 }
@@ -156,6 +152,7 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
 
     let compressed = std::fs::read(&obj_path)?;
     let data = decompress(compressed)?;
+
     let null_pos = data.iter().position(|&b| b == 0).ok_or_else(|| anyhow!("Invalid blob object"))?;
     let content = &data[null_pos + 1..];
 
@@ -169,25 +166,14 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
 }
 
 pub fn is_clean(path: &Path, index_hash: Option<&String>) -> Result<bool> {
-    if !path.exists() {
-        return Ok(index_hash.is_none());
-    }
+    let data = match read(path) {
+        Ok(d) => d,
+        Err(_) => return Ok(false),
+    };
 
-    let data = read(path)?;
     let header = format!("blob {}\0", data.len());
     let full = [header.as_bytes(), &data].concat();
-
     let working_hash = hash_object(&full)?;
-    let clean = Some(&working_hash) == index_hash;
 
-    if !clean {
-        println!(
-            "Uncommitted change detected: {}\n  Working: {:?}\n  Index:   {:?}",
-            path.display(),
-            working_hash,
-            index_hash
-        );
-    }
-
-    Ok(clean)
+    Ok(Some(&working_hash) == index_hash)
 }
