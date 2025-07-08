@@ -13,6 +13,7 @@ use dashmap::DashMap;
 use crate::commands;
 use crate::commands::branch::update_current_branch;
 use crate::commands::commit::{read_current_commit, read_tree_of_commit, get_branch_commit};
+use crate::utils::hash::hash_object;
 use crate::utils::index::{Index, IndexEntry};
 use crate::utils::zip::decompress;
 
@@ -50,7 +51,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
         let current_hash = current_tree.get(path);
         let target_hash = target_tree.get(path);
 
-        let clean = index_hash == current_hash;
+        let clean = is_clean(path, index_hash)?;
 
         match (clean, current_hash, target_hash) {
             (false, _, _) => {
@@ -173,4 +174,24 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
     let mut file = File::create(path)?;
     file.write_all(content)?;
     Ok(())
+}
+
+pub fn is_clean(path: &Path, index_hash: Option<&String>) -> Result<bool> {
+    let data = read(path)?;
+    let header = format!("blob {}\0", data.len());
+    let full = [header.as_bytes(), &data].concat();
+
+    let working_hash = hash_object(&full)?;
+    let clean = Some(&working_hash) == index_hash;
+
+    if !clean {
+        println!(
+            "Uncommitted change detected: {}\n  Working: {:?}\n  Index:   {:?}",
+            path.display(),
+            working_hash,
+            index_hash
+        );
+    }
+
+    Ok(clean)
 }
