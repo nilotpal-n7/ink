@@ -180,13 +180,25 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
 
 pub fn is_clean(path: &Path, index_hash: Option<&String>) -> Result<bool> {
     if !path.exists() {
+        println!("{} missing on disk, index_hash = {:?}", path.display(), index_hash);
         return Ok(index_hash.is_none());
     }
 
-    let data = read(path)?;
+    let data = std::fs::read(path)?;
     let header = format!("blob {}\0", data.len());
     let full = [header.as_bytes(), &data].concat();
 
     let working_hash = hash_object(&full)?;
-    Ok(Some(&working_hash) == index_hash)
+
+    let clean = Some(&working_hash) == index_hash;
+
+    if !clean {
+        println!("--------------------------------------");
+        println!("Uncommitted file detected: {}", path.display());
+        println!("  Hash in working directory: {}", working_hash);
+        println!("  Hash in index/commit:      {:?}", index_hash);
+        println!("--------------------------------------");
+    }
+
+    Ok(clean)
 }
