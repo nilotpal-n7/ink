@@ -57,7 +57,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
         let current_hash = current_tree.get(path);
         let target_hash = target_tree.get(path);
 
-        let clean = is_clean(path, index_hash, current_hash)?;
+        let clean = is_clean(path, index_hash.or(current_hash), current_hash)?;
 
         match (clean, current_hash, target_hash) {
             (false, _, _) => Err(anyhow!(
@@ -184,9 +184,9 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn is_clean(path: &Path, index_hash: Option<&String>, current_hash: Option<&String>) -> Result<bool> {
+pub fn is_clean(path: &Path, ref_hash: Option<&String>, fallback_commit_hash: Option<&String>) -> Result<bool> {
     if !path.exists() {
-        return Ok(index_hash.is_none() && current_hash.is_none());
+        return Ok(ref_hash.is_none() && fallback_commit_hash.is_none());
     }
 
     let data = read(path)?;
@@ -194,14 +194,14 @@ pub fn is_clean(path: &Path, index_hash: Option<&String>, current_hash: Option<&
     let full = [header.as_bytes(), &data].concat();
     let working_hash = hash_object(&full)?;
 
-    // Allow clean if working file matches *any* of the two: index or current commit
-    let clean = Some(&working_hash) == index_hash || Some(&working_hash) == current_hash;
+    // Allow clean if working file matches any of ref or fallback
+    let clean = Some(&working_hash) == ref_hash || Some(&working_hash) == fallback_commit_hash;
 
     if !clean {
         println!("File {} is dirty:", path.display());
         println!("  Working:      {}", working_hash);
-        println!("  Index:        {:?}", index_hash);
-        println!("  From commit:  {:?}", current_hash);
+        println!("  Index/Ref:    {:?}", ref_hash);
+        println!("  From commit:  {:?}", fallback_commit_hash);
     }
 
     Ok(clean)
