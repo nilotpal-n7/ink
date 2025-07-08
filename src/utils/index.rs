@@ -41,7 +41,7 @@ impl Index {
     }
 
     pub fn exists_for_branch(branch: &str) -> bool {
-        Path::new(".ink/refs/INDEXS").join(branch).exists()
+        Path::new(".ink/refs/INDEXES").join(branch).exists()
     }
 }
 
@@ -82,6 +82,7 @@ impl Index {
         self.entries.remove(path);
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, path: &PathBuf) -> Option<&IndexEntry> {
         self.entries.get(path)
     }
