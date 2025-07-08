@@ -1,18 +1,17 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::{create_dir_all, read, File};
+use std::fs::{create_dir_all, read, File, remove_file};
 use std::io::Write;
-use std::path::PathBuf;
-use std::fs::remove_file;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::from_utf8;
 use std::sync::Mutex;
-use anyhow::{ anyhow, Result };
-use rayon::prelude::*;
+
+use anyhow::{anyhow, Result};
 use dashmap::DashMap;
+use rayon::prelude::*;
 
 use crate::commands;
 use crate::commands::branch::update_current_branch;
-use crate::commands::commit::{read_current_commit, read_tree_of_commit, get_branch_commit};
+use crate::commands::commit::{get_branch_commit, read_current_commit, read_tree_of_commit};
 use crate::utils::hash::hash_object;
 use crate::utils::index::{Index, IndexEntry};
 use crate::utils::zip::decompress;
@@ -29,7 +28,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
         .collect();
 
     let current_commit = read_current_commit().ok();
-     let current_tree = if let Some(commit) = &current_commit {
+    let current_tree = if let Some(commit) = &current_commit {
         get_tree_entries(&read_tree_of_commit(commit)?)?
     } else {
         HashMap::new()
@@ -46,6 +45,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
         .cloned()
         .collect();
 
+    // Validate and restore files
     all_paths.par_iter().try_for_each(|path| {
         let index_hash = index_map.get(path);
         let current_hash = current_tree.get(path);
@@ -54,12 +54,10 @@ pub fn run(b: bool, name: String) -> Result<()> {
         let clean = is_clean(path, index_hash)?;
 
         match (clean, current_hash, target_hash) {
-            (false, _, _) => {
-                Err(anyhow!(
-                    "Uncommitted changes in '{}', please commit or stash them first.",
-                    path.display()
-                ))
-            }
+            (false, _, _) => Err(anyhow!(
+                "Uncommitted changes in '{}', please commit or stash them first.",
+                path.display()
+            )),
             (true, Some(_), None) => {
                 if path.exists() {
                     remove_file(path)?;
@@ -71,6 +69,10 @@ pub fn run(b: bool, name: String) -> Result<()> {
         }
     })?;
 
+    // ✅ Update HEAD now that files are safe
+    update_current_branch(&name)?;
+
+    // ✅ Build and save updated index from target tree
     let entries: Vec<IndexEntry> = target_tree
         .par_iter()
         .map(|(path, hash)| IndexEntry {
@@ -88,7 +90,6 @@ pub fn run(b: bool, name: String) -> Result<()> {
     let index = new_index.into_inner().unwrap();
     index.save()?;
 
-    update_current_branch(&name)?;
     println!("Switched to branch '{}'", name);
     Ok(())
 }
@@ -96,9 +97,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
 pub fn get_tree_entries(tree_hash: &str) -> Result<HashMap<PathBuf, String>> {
     let out = DashMap::new();
     read_tree_recursive(PathBuf::new(), tree_hash, &out)?;
-    // Convert DashMap to regular HashMap
-    let entries: HashMap<PathBuf, String> = out.into_iter().collect();
-    Ok(entries)
+    Ok(out.into_iter().collect())
 }
 
 pub fn read_tree_recursive(
@@ -114,10 +113,9 @@ pub fn read_tree_recursive(
     let compressed = read(&obj_path)?;
     let data = decompress(compressed)?;
     let null_pos = data.iter().position(|&b| b == 0).ok_or_else(|| anyhow!("Invalid tree object"))?;
-    let content = &data[null_pos + 1..]; // skip "tree <size>\0"
-    let text = from_utf8(content)?;      // now safe
-    
-    // Collect tasks to recurse later
+    let content = &data[null_pos + 1..];
+    let text = from_utf8(content)?;
+
     let subtasks: Vec<(PathBuf, String)> = text
         .par_lines()
         .filter_map(|line| {
@@ -126,7 +124,6 @@ pub fn read_tree_recursive(
             }
 
             let mut parts = line.split_whitespace();
-            // let mode = parts.next()?;
             let obj_type = parts.next()?;
             let obj_hash = parts.next()?;
             let name = line.split('\t').nth(1)?;
@@ -144,7 +141,6 @@ pub fn read_tree_recursive(
         })
         .collect();
 
-    // Recurse into subtrees
     for (sub_prefix, sub_hash) in subtasks {
         read_tree_recursive(sub_prefix, &sub_hash, out)?;
     }
@@ -160,11 +156,7 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
 
     let compressed = std::fs::read(&obj_path)?;
     let data = decompress(compressed)?;
-
-    let null_pos = data
-        .iter()
-        .position(|&b| b == 0)
-        .ok_or_else(|| anyhow!("Invalid blob object"))?;
+    let null_pos = data.iter().position(|&b| b == 0).ok_or_else(|| anyhow!("Invalid blob object"))?;
     let content = &data[null_pos + 1..];
 
     if let Some(parent) = path.parent() {
@@ -177,6 +169,10 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
 }
 
 pub fn is_clean(path: &Path, index_hash: Option<&String>) -> Result<bool> {
+    if !path.exists() {
+        return Ok(index_hash.is_none());
+    }
+
     let data = read(path)?;
     let header = format!("blob {}\0", data.len());
     let full = [header.as_bytes(), &data].concat();
