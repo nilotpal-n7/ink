@@ -80,3 +80,9 @@ pub fn read_tree_of_commit(commit_hash: &str) -> Result<String> {
     }
     Err(anyhow!("No tree found in commit {}", commit_hash))
 }
+
+pub fn get_branch_commit(branch: &str) -> Result<String> {
+    let path = Path::new(".ink").join("refs").join("heads").join(branch);
+    let content = std::fs::read_to_string(path)?;
+    Ok(content.trim().to_string())
+}

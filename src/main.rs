@@ -36,6 +36,15 @@ enum Commands {
 
         #[arg(short)]
         a: bool
+    },
+    Branch {
+        name: Option<String>
+    },
+    Checkout {
+        #[arg(short)]
+        b: bool,
+
+        name: String,
     }
 }
 
@@ -60,6 +69,8 @@ fn main() -> Result<()> {
             }
         },
         Commands::Commit { message, a } => commands::commit::run(message, a)?,
+        Commands::Branch { name } => commands::branch::run(name)?,
+        Commands::Checkout { b, name } => commands::checkout::run(b, name)?,
     }
     Ok(())
 }
