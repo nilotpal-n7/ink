@@ -112,7 +112,9 @@ pub fn read_tree_recursive(
 
     let compressed = read(&obj_path)?;
     let data = decompress(compressed)?;
-    let text = from_utf8(&data)?;
+    let null_pos = data.iter().position(|&b| b == 0).ok_or_else(|| anyhow!("Invalid tree object"))?;
+    let content = &data[null_pos + 1..]; // skip "tree <size>\0"
+    let text = from_utf8(content)?;      // now safe
     
     // Collect tasks to recurse later
     let subtasks: Vec<(PathBuf, String)> = text
