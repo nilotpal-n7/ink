@@ -16,12 +16,13 @@ use crate::utils::index::{Index, IndexEntry};
 use crate::utils::zip::decompress;
 
 pub fn run(b: bool, name: String) -> Result<()> {
-    let mut target_commit: Option<String> = None;
+    let current_commit = read_current_commit().ok(); // ← get this *before* any switching
 
-    target_commit = if b {
+    let target_commit = if b {
+        // Do NOT switch yet!
+        let base_commit = current_commit.clone(); // ← new branch starts from current commit
         commands::branch::run(Some(name.clone()))?;
-        // Avoid switching before tree is safely handled
-        read_current_commit().ok()
+        base_commit
     } else {
         Some(get_branch_commit(&name)?)
     };
@@ -34,8 +35,8 @@ pub fn run(b: bool, name: String) -> Result<()> {
         .map(|(_, entry)| (entry.path.clone(), entry.hash.clone()))
         .collect();
 
-    let current_commit = read_current_commit().ok();
-    let current_tree = if let Some(commit) = &current_commit {
+    let prev_commit = current_commit.clone(); // ← use the original value here
+    let current_tree = if let Some(commit) = &prev_commit {
         get_tree_entries(&read_tree_of_commit(commit)?)?
     } else {
         HashMap::new()
@@ -56,7 +57,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
         let current_hash = current_tree.get(path);
         let target_hash = target_tree.get(path);
 
-        let clean = is_clean(path, index_hash)?;
+        let clean = is_clean(path, index_hash, current_hash)?;
 
         match (clean, current_hash, target_hash) {
             (false, _, _) => Err(anyhow!(
@@ -183,26 +184,24 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn is_clean(path: &Path, index_hash: Option<&String>) -> Result<bool> {
+pub fn is_clean(path: &Path, index_hash: Option<&String>, current_hash: Option<&String>) -> Result<bool> {
     if !path.exists() {
-        println!("{} missing on disk, index_hash = {:?}", path.display(), index_hash);
-        return Ok(index_hash.is_none());
+        return Ok(index_hash.is_none() && current_hash.is_none());
     }
 
     let data = read(path)?;
     let header = format!("blob {}\0", data.len());
     let full = [header.as_bytes(), &data].concat();
-
     let working_hash = hash_object(&full)?;
 
-    let clean = Some(&working_hash) == index_hash;
+    // Allow clean if working file matches *any* of the two: index or current commit
+    let clean = Some(&working_hash) == index_hash || Some(&working_hash) == current_hash;
 
     if !clean {
-        println!("--------------------------------------");
-        println!("Uncommitted file detected: {}", path.display());
-        println!("  Hash in working directory: {}", working_hash);
-        println!("  Hash in index/commit:      {:?}", index_hash);
-        println!("--------------------------------------");
+        println!("File {} is dirty:", path.display());
+        println!("  Working:      {}", working_hash);
+        println!("  Index:        {:?}", index_hash);
+        println!("  From commit:  {:?}", current_hash);
     }
 
     Ok(clean)
