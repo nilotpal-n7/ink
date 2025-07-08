@@ -90,7 +90,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
     for entry in entries {
         new_index.add(entry);
     }
-    index.save()?;
+    new_index.save()?;
 
     println!("Switched to branch '{}'", name);
     Ok(())
