@@ -21,6 +21,7 @@ pub fn run(h: HashAlgo, z: bool) -> Result<()> {
     write(root.join("index"), "")?;
     write(root.join("config"), "")?;
     write(root.join("HEAD"), "ref: refs/heads/main")?;
+    write(root.join("refs").join("INDEXES").join("main"), "")?;
 
     save_hash_algo(h)?;
     save_is_zip(z)?;

@@ -7,6 +7,7 @@ use bincode::config::standard;
 use bincode::serde::{decode_from_slice, encode_to_vec};
 use serde::{Serialize, Deserialize};
 
+use crate::commands::branch::read_current_branch;
 use crate::utils::object::create_blob;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -104,4 +105,10 @@ pub fn add_files_to_index(files: &[PathBuf]) -> Result<()> {
     }
 
     index.save()
+}
+
+pub fn save_index_for_current_branch() -> Result<()> {
+    let index = Index::load()?;
+    let branch = read_current_branch()?;
+    index.save_for_branch(&branch)
 }

@@ -5,7 +5,7 @@ use ignore::WalkBuilder;
 use rayon::prelude::*;
 
 use crate::utils::enums::AddMode;
-use crate::utils::index::{add_files_to_index, Index};
+use crate::utils::index::{add_files_to_index, save_index_for_current_branch, Index};
 use crate::utils::ignore::is_ignored;
 use crate::utils::dir::is_in_ink;
 
@@ -39,6 +39,7 @@ pub fn run(mode: AddMode) -> Result<()> {
                 .unwrap_or_else(|arc| (*arc.lock().unwrap()).clone());
 
             add_files_to_index(&files_to_add)?;
+            save_index_for_current_branch()?;
         }
 
         AddMode::Update => {
@@ -55,6 +56,7 @@ pub fn run(mode: AddMode) -> Result<()> {
 
             index.save()?; // save deletions
             add_files_to_index(&existing)?; // only add valid ones
+            save_index_for_current_branch()?;
         }
 
         AddMode::Files(files) => {
@@ -64,6 +66,7 @@ pub fn run(mode: AddMode) -> Result<()> {
                 .collect();
 
             add_files_to_index(&filtered)?;
+            save_index_for_current_branch()?;
         }
     }
 

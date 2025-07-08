@@ -5,6 +5,7 @@ use anyhow::{ anyhow, Result };
 use crate::commands;
 use crate::commands::branch::read_current_branch;
 use crate::utils::enums::AddMode;
+use crate::utils::index::{save_index_for_current_branch};
 use crate::utils::object::{create_commit, create_tree };
 use crate::utils::zip::decompress;
 
@@ -28,6 +29,7 @@ pub fn run(message: String, a: bool) -> Result<()> {
 
     let comment_hash = create_commit(&tree_hash, parent_hash.as_deref(), &message, "Nilotpal Gupta")?;
     update_current_commit(&comment_hash)?;
+    save_index_for_current_branch()?;
 
     Ok(())
 }

@@ -9,30 +9,29 @@ use dashmap::DashMap;
 use rayon::prelude::*;
 
 use crate::commands;
-use crate::commands::branch::update_current_branch;
+use crate::commands::branch::{read_current_branch, update_current_branch};
 use crate::commands::commit::{get_branch_commit, read_current_commit, read_tree_of_commit};
+use crate::utils::dir::remove_empty_parents_up_to;
 use crate::utils::hash::hash_object;
 use crate::utils::index::{Index, IndexEntry};
 use crate::utils::zip::decompress;
 
 pub fn run(b: bool, name: String) -> Result<()> {
+    let current_branch = read_current_branch()?;
     let current_commit = read_current_commit().ok();
 
+    // Save the current index before switching
+    let current_index = Index::load()?;
+    current_index.save_for_branch(&current_branch)?;
+
     let target_commit = if b {
-        let base_commit = current_commit.clone();
         commands::branch::run(Some(name.clone()))?;
-        base_commit
+        current_commit.clone()
     } else {
         Some(get_branch_commit(&name)?)
     };
 
     let target_commit = target_commit.ok_or_else(|| anyhow!("Target branch has no commit"))?;
-    let index = Index::load()?;
-    let index_map: HashMap<_, _> = index
-        .entries
-        .par_iter()
-        .map(|(_, entry)| (entry.path.clone(), entry.hash.clone()))
-        .collect();
 
     let prev_commit = current_commit.clone();
     let current_tree = if let Some(commit) = &prev_commit {
@@ -43,6 +42,13 @@ pub fn run(b: bool, name: String) -> Result<()> {
 
     let tree_hash = read_tree_of_commit(&target_commit)?;
     let target_tree = get_tree_entries(&tree_hash)?;
+
+    // Load previous index (saved above)
+    let index_map: HashMap<_, _> = current_index
+        .entries
+        .par_iter()
+        .map(|(_, entry)| (entry.path.clone(), entry.hash.clone()))
+        .collect();
 
     let all_paths: HashSet<_> = index_map
         .keys()
@@ -67,6 +73,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
                 if path.exists() {
                     remove_file(path)?;
                 }
+                remove_empty_parents_up_to(path, Path::new("."))?;
                 Ok(())
             }
             (true, _, Some(target_hash)) => restore_blob(path, target_hash),
@@ -78,9 +85,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
 
     let mut new_index = Index::default();
 
-    if b {
-        new_index.save_for_branch(&name)?;
-    } else if Index::exists_for_branch(&name) {
+    if Index::exists_for_branch(&name) {
         new_index = Index::load_for_branch(&name)?;
     } else {
         let entries: Vec<IndexEntry> = target_tree
@@ -97,7 +102,6 @@ pub fn run(b: bool, name: String) -> Result<()> {
     }
 
     new_index.save()?;
-
     println!("Switched to branch '{}'", name);
     Ok(())
 }
