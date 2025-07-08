@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::{create_dir_all, read, File};
+use std::fs::{create_dir_all, read, remove_file, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
@@ -56,16 +56,24 @@ pub fn run(b: bool, name: String) -> Result<()> {
         match (clean, current_hash, target_hash) {
             (false, _, _) => Err(anyhow!(
                 "Uncommitted changes in '{}', please commit or stash them first.",
-                path.display()
+                path.display() // uncommitted changes
             )),
             (true, Some(_), None) => {
+                // File was in current commit but removed in target
                 if path.exists() {
-                    std::fs::remove_file(path)?;
+                    remove_file(path)?;
                 }
                 Ok(())
             },
-            (true, _, Some(target_hash)) => restore_blob(path, target_hash),
-            _ => Ok(()),
+            (true, None, Some(target_hash)) => restore_blob(path, target_hash),
+            (true, Some(_), Some(_)) => Ok(()), // file in both commits
+            (true, None, None) => {
+                // File tracked in index but missing from both commits → delete it
+                if path.exists() {
+                    remove_file(path)?;
+                }
+                Ok(())
+            },
         }
     })?;
 
