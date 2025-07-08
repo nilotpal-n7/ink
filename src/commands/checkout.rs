@@ -18,13 +18,13 @@ use crate::utils::zip::decompress;
 pub fn run(b: bool, name: String) -> Result<()> {
     let mut target_commit: Option<String> = None;
 
-    if b {
+    target_commit = if b {
         commands::branch::run(Some(name.clone()))?;
         // Avoid switching before tree is safely handled
-        target_commit = read_current_commit().ok();
+        read_current_commit().ok()
     } else {
-        target_commit = Some(get_branch_commit(&name)?);
-    }
+        Some(get_branch_commit(&name)?)
+    };
 
     let target_commit = target_commit.ok_or_else(|| anyhow!("Target branch has no commit"))?;
     let index = Index::load()?;
@@ -77,19 +77,22 @@ pub fn run(b: bool, name: String) -> Result<()> {
 
     // Only now it's safe to update HEAD
     update_current_branch(&name)?;
-
-    let entries: Vec<IndexEntry> = target_tree
-        .par_iter()
-        .map(|(path, hash)| IndexEntry {
-            path: path.clone(),
-            hash: hash.clone(),
-        })
-        .collect();
-
     let mut new_index = Index::default();
-    for entry in entries {
-        new_index.add(entry);
+
+    if !b {
+        let entries: Vec<IndexEntry> = target_tree
+            .par_iter()
+            .map(|(path, hash)| IndexEntry {
+                path: path.clone(),
+                hash: hash.clone(),
+            })
+            .collect();
+
+        for entry in entries {
+            new_index.add(entry);
+        }
     }
+
     new_index.save()?;
 
     println!("Switched to branch '{}'", name);
