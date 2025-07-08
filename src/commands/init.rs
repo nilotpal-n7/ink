@@ -16,7 +16,7 @@ pub fn run(h: HashAlgo, z: bool) -> Result<()> {
 
     create_dir_all(root.join("objects"))?;
     create_dir_all(root.join("refs").join("heads"))?;
-    create_dir_all(root.join("refs").join("tags"))?;
+    create_dir_all(root.join("refs").join("INDEXES"))?;
 
     write(root.join("index"), "")?;
     write(root.join("config"), "")?;

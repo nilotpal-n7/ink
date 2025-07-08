@@ -16,11 +16,10 @@ use crate::utils::index::{Index, IndexEntry};
 use crate::utils::zip::decompress;
 
 pub fn run(b: bool, name: String) -> Result<()> {
-    let current_commit = read_current_commit().ok(); // ← get this *before* any switching
+    let current_commit = read_current_commit().ok();
 
     let target_commit = if b {
-        // Do NOT switch yet!
-        let base_commit = current_commit.clone(); // ← new branch starts from current commit
+        let base_commit = current_commit.clone();
         commands::branch::run(Some(name.clone()))?;
         base_commit
     } else {
@@ -35,7 +34,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
         .map(|(_, entry)| (entry.path.clone(), entry.hash.clone()))
         .collect();
 
-    let prev_commit = current_commit.clone(); // ← use the original value here
+    let prev_commit = current_commit.clone();
     let current_tree = if let Some(commit) = &prev_commit {
         get_tree_entries(&read_tree_of_commit(commit)?)?
     } else {
@@ -65,7 +64,6 @@ pub fn run(b: bool, name: String) -> Result<()> {
                 path.display()
             )),
             (true, Some(_), None) => {
-                // Delete only if current had it and target doesn't
                 if path.exists() {
                     remove_file(path)?;
                 }
@@ -76,11 +74,15 @@ pub fn run(b: bool, name: String) -> Result<()> {
         }
     })?;
 
-    // Only now it's safe to update HEAD
     update_current_branch(&name)?;
+
     let mut new_index = Index::default();
 
-    if !b {
+    if b {
+        new_index.save_for_branch(&name)?;
+    } else if Index::exists_for_branch(&name) {
+        new_index = Index::load_for_branch(&name)?;
+    } else {
         let entries: Vec<IndexEntry> = target_tree
             .par_iter()
             .map(|(path, hash)| IndexEntry {
@@ -194,7 +196,6 @@ pub fn is_clean(path: &Path, ref_hash: Option<&String>, fallback_commit_hash: Op
     let full = [header.as_bytes(), &data].concat();
     let working_hash = hash_object(&full)?;
 
-    // Allow clean if working file matches any of ref or fallback
     let clean = Some(&working_hash) == ref_hash || Some(&working_hash) == fallback_commit_hash;
 
     if !clean {

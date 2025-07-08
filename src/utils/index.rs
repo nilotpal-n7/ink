@@ -1,20 +1,47 @@
 use std::collections::HashMap;
-use std::fs::{read_to_string, File};
+use std::fs::{create_dir_all, read_to_string, write, File, read};
 use std::io::{BufWriter, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use anyhow::Result;
+use bincode::config::standard;
+use bincode::serde::{decode_from_slice, encode_to_vec};
+use serde::{Serialize, Deserialize};
 
 use crate::utils::object::create_blob;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct IndexEntry {
     pub path: PathBuf,
     pub hash: String,
 }
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct Index {
     pub entries: HashMap<PathBuf, IndexEntry>,
+}
+
+impl Index {
+    pub fn save_for_branch(&self, branch: &str) -> Result<()> {
+        let dir = Path::new(".ink/refs/INDEXES");
+        create_dir_all(&dir)?;
+        let path = dir.join(branch);
+
+        let encoded = encode_to_vec(self, standard())?;
+        write(path, encoded)?;
+        Ok(())
+    }
+
+    pub fn load_for_branch(branch: &str) -> Result<Self> {
+        let path = Path::new(".ink/refs/INDEXES").join(branch);
+        let bytes = read(path)?;
+
+        let (index, _): (Index, _) = decode_from_slice(&bytes, standard())?;
+        Ok(index)
+    }
+
+    pub fn exists_for_branch(branch: &str) -> bool {
+        Path::new(".ink/refs/INDEXS").join(branch).exists()
+    }
 }
 
 impl Index {
