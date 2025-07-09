@@ -26,3 +26,13 @@ pub fn remove_empty_parents_up_to(path: &Path, stop_at: &Path) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(target_os = "windows")]
+pub fn hide_folder_windows(path: &std::path::Path) {
+    use std::process::Command;
+    if path.exists() {
+        let _ = Command::new("attrib")
+            .args(&["+h", path.to_str().unwrap()])
+            .output();
+    }
+}
