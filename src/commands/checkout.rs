@@ -15,41 +15,42 @@ use crate::utils::dir::remove_empty_parents_up_to;
 use crate::utils::hash::hash_object;
 use crate::utils::index::{Index, IndexEntry};
 use crate::utils::zip::decompress;
+use crate::utils::ignore::is_ignored;
 
-pub fn run(b: bool, name: String) -> Result<()> {
+pub fn run(b: bool, force: bool, name: String) -> Result<()> {
+    // If -b flag set, create the branch now
+    if b {
+        commands::branch::run(Some(name.clone()))?;
+    }
+
     let current_branch = read_current_branch()?;
     let current_commit = read_current_commit().ok();
-
-    // Save the current index before switching
     let current_index = Index::load()?;
     current_index.save_for_branch(&current_branch)?;
 
-    let target_commit = if b {
-        commands::branch::run(Some(name.clone()))?;
-        current_commit.clone()
-    } else {
-        Some(get_branch_commit(&name)?)
-    };
+    // Target commit and branch info
+    let target_commit = Some(get_branch_commit(&name)?)
+        .ok_or_else(|| anyhow!("Target branch has no commit"))?;
 
-    let target_commit = target_commit.ok_or_else(|| anyhow!("Target branch has no commit"))?;
-
-    let prev_commit = current_commit.clone();
-    let current_tree = if let Some(commit) = &prev_commit {
+    let current_tree = if let Some(commit) = &current_commit {
         get_tree_entries(&read_tree_of_commit(commit)?)?
     } else {
         HashMap::new()
     };
 
-    let tree_hash = read_tree_of_commit(&target_commit)?;
-    let target_tree = get_tree_entries(&tree_hash)?;
+    let target_tree = get_tree_entries(&read_tree_of_commit(&target_commit)?)?;
 
-    // Load previous index (saved above)
+    // Current index as map
     let index_map: HashMap<_, _> = current_index
         .entries
         .par_iter()
         .map(|(_, entry)| (entry.path.clone(), entry.hash.clone()))
         .collect();
 
+    // Determine if this is a new branch (never checked out before)
+    let is_new_branch = !Index::exists_for_branch(&name);
+
+    // Union of all paths involved
     let all_paths: HashSet<_> = index_map
         .keys()
         .chain(current_tree.keys())
@@ -57,38 +58,59 @@ pub fn run(b: bool, name: String) -> Result<()> {
         .cloned()
         .collect();
 
-    all_paths.par_iter().try_for_each(|path| {
-        let index_hash = index_map.get(path);
+    // Only check uncommitted changes if not --force and not a new branch
+    if !force && !is_new_branch {
+        all_paths.par_iter().try_for_each(|path| {
+            if is_ignored(path) {
+                return Ok(());
+            }
+
+            let index_hash = index_map.get(path);
+            let current_hash = current_tree.get(path);
+            let target_hash = target_tree.get(path);
+
+            let clean = is_clean(path, index_hash, current_hash, target_hash)?;
+            if !clean {
+                return Err(anyhow!(
+                    "Uncommitted changes in '{}', please commit or stash them first.",
+                    path.display()
+                ));
+            }
+
+            Ok(())
+        })?;
+    }
+
+    // Proceed to clean/delete or restore
+    all_paths.par_iter().try_for_each(|path| -> Result<()> {
+        if is_ignored(path) {
+            return Ok(());
+        }
+
         let current_hash = current_tree.get(path);
         let target_hash = target_tree.get(path);
 
-        let clean = is_clean(path, index_hash, current_hash, target_hash)?;
-
-        match (clean, current_hash, target_hash) {
-            (false, _, _) => Err(anyhow!(
-                "Uncommitted changes in '{}', please commit or stash them first.",
-                path.display()
-            )),
-            (true, Some(_), None) => {
+        match (current_hash, target_hash) {
+            (Some(_), None) => {
                 if path.exists() {
-                    remove_file(path)?;
+                    remove_file(path).ok();
                 }
-                remove_empty_parents_up_to(path, Path::new("."))?;
+                remove_empty_parents_up_to(path, Path::new(".")).ok();
                 Ok(())
             }
-            (true, _, Some(target_hash)) => restore_blob(path, target_hash),
+            (_, Some(tgt)) => {
+                restore_blob(path, tgt).ok();
+                Ok(())
+            }
             _ => Ok(()),
         }
     })?;
 
     update_current_branch(&name)?;
 
-    let mut new_index = Index::default();
-
-    if Index::exists_for_branch(&name) {
-        new_index = Index::load_for_branch(&name)?;
-    } else {
-        let entries: Vec<IndexEntry> = target_tree
+    // Load or create new index
+    let new_index = if is_new_branch {
+        let entries: Vec<_> = target_tree
             .par_iter()
             .map(|(path, hash)| IndexEntry {
                 path: path.clone(),
@@ -96,10 +118,14 @@ pub fn run(b: bool, name: String) -> Result<()> {
             })
             .collect();
 
+        let mut idx = Index::default();
         for entry in entries {
-            new_index.add(entry);
+            idx.add(entry);
         }
-    }
+        idx
+    } else {
+        Index::load_for_branch(&name)?
+    };
 
     new_index.save()?;
     println!("Switched to branch '{}'", name);
@@ -129,25 +155,14 @@ pub fn read_tree_recursive(
     let text = from_utf8(content)?;
 
     let subtasks: Vec<(PathBuf, String)> = text
-        .par_lines()
+        .lines()
         .filter_map(|line| {
-            if line.trim().is_empty() {
-                return None;
-            }
-
-            let tab_split: Vec<&str> = line.split('\t').collect();
-            if tab_split.len() != 2 {
-                return None;
-            }
-            let meta = tab_split[0];
-            let name = tab_split[1];
+            let (meta, name) = line.split_once('\t')?;
             let mut parts = meta.split_whitespace();
             let _mode = parts.next()?;
             let obj_type = parts.next()?;
             let obj_hash = parts.next()?;
-
             let full_path = prefix.join(name);
-
             if obj_type == "blob" {
                 out.insert(full_path, obj_hash.to_string());
                 None
@@ -174,11 +189,7 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
 
     let compressed = read(&obj_path)?;
     let data = decompress(compressed)?;
-
-    let null_pos = data
-        .iter()
-        .position(|&b| b == 0)
-        .ok_or_else(|| anyhow!("Invalid blob object"))?;
+    let null_pos = data.iter().position(|&b| b == 0).ok_or_else(|| anyhow!("Invalid blob object"))?;
     let content = &data[(null_pos + 1)..];
 
     if let Some(parent) = path.parent() {
@@ -206,45 +217,33 @@ pub fn is_clean(
     let working_hash = hash_object(&full)?;
 
     match target_hash {
-        Some(target) => {
-            if &working_hash == target {
-                return Ok(true); // file matches target → clean
+        Some(tgt) => {
+            if Some(&working_hash) == index_hash {
+                if index_hash != current_hash {
+                    return Err(anyhow!(
+                        "Uncommitted staged changes in '{}'", path.display()
+                    ));
+                } else {
+                    return Ok(&working_hash == tgt);
+                }
             }
 
-            // It doesn't match target — see if it matches index or current commit
-            if Some(&working_hash) == index_hash || Some(&working_hash) == current_hash {
-                println!("File {} has uncommitted changes.", path.display());
-                println!("  Working: {}", working_hash);
-                println!("  Index:   {:?}", index_hash);
-                println!("  Commit:  {:?}", current_hash);
+            if Some(&working_hash) == current_hash {
                 return Err(anyhow!(
-                    "Uncommitted changes in '{}', please commit or stash them first.",
-                    path.display()
-                ));
-            } else {
-                // Doesn't match anything, and target will overwrite → conflict
-                return Err(anyhow!(
-                    "Untracked or modified file '{}' would be overwritten by checkout.",
-                    path.display()
+                    "Uncommitted unstaged changes in '{}'", path.display()
                 ));
             }
+
+            Ok(false)
         }
 
         None => {
-            // Target commit does not contain this file — it will be deleted
-            // Safe to delete only if it’s not staged (i.e., not in index)
-            if index_hash.is_some() {
-                println!(
-                    "File {} is staged but not committed and will be deleted.",
-                    path.display()
-                );
-                return Err(anyhow!(
-                    "Uncommitted staged file '{}' would be lost by checkout.",
-                    path.display()
-                ));
-            } else {
-                // Untracked file — Git would keep unless it conflicts,
-                return Ok(false); // ignore untracked files like Git does
+            match (index_hash, current_hash) {
+                (Some(index), Some(current)) if index == current => Ok(true),
+                (Some(_), _) => Err(anyhow!(
+                    "Uncommitted staged file '{}' would be lost.", path.display()
+                )),
+                _ => Ok(false),
             }
         }
     }

@@ -5,7 +5,6 @@ use colored::Colorize;
 use rayon::prelude::*;
 
 use crate::commands::commit::read_current_commit;
-use crate::utils::index::Index;
 
 pub fn run(name: Option<String>) -> Result<()> {
     match name {
@@ -22,8 +21,6 @@ pub fn run(name: Option<String>) -> Result<()> {
             create_dir_all(branch_path.parent().unwrap())?;
             write(branch_path, current_commit)?;
             
-            let new_index = Index::default();
-            new_index.save_for_branch(&n)?;
             println!("Created branch '{}'", n);
         }
 
