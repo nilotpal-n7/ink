@@ -62,7 +62,7 @@ pub fn run(b: bool, name: String) -> Result<()> {
         let current_hash = current_tree.get(path);
         let target_hash = target_tree.get(path);
 
-        let clean = is_clean(path, index_hash.or(current_hash), current_hash)?;
+        let clean = is_clean(path, index_hash, current_hash, target_hash)?;
 
         match (clean, current_hash, target_hash) {
             (false, _, _) => Err(anyhow!(
@@ -190,9 +190,14 @@ pub fn restore_blob(path: &Path, hash: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn is_clean(path: &Path, ref_hash: Option<&String>, fallback_commit_hash: Option<&String>) -> Result<bool> {
+pub fn is_clean(
+    path: &Path,
+    index_hash: Option<&String>,
+    current_hash: Option<&String>,
+    target_hash: Option<&String>,
+) -> Result<bool> {
     if !path.exists() {
-        return Ok(ref_hash.is_none() && fallback_commit_hash.is_none());
+        return Ok(index_hash.is_none() && current_hash.is_none());
     }
 
     let data = read(path)?;
@@ -200,14 +205,47 @@ pub fn is_clean(path: &Path, ref_hash: Option<&String>, fallback_commit_hash: Op
     let full = [header.as_bytes(), &data].concat();
     let working_hash = hash_object(&full)?;
 
-    let clean = Some(&working_hash) == ref_hash || Some(&working_hash) == fallback_commit_hash;
+    match target_hash {
+        Some(target) => {
+            if &working_hash == target {
+                return Ok(true); // file matches target → clean
+            }
 
-    if !clean {
-        println!("File {} is dirty:", path.display());
-        println!("  Working:      {}", working_hash);
-        println!("  Index/Ref:    {:?}", ref_hash);
-        println!("  From commit:  {:?}", fallback_commit_hash);
+            // It doesn't match target — see if it matches index or current commit
+            if Some(&working_hash) == index_hash || Some(&working_hash) == current_hash {
+                println!("File {} has uncommitted changes.", path.display());
+                println!("  Working: {}", working_hash);
+                println!("  Index:   {:?}", index_hash);
+                println!("  Commit:  {:?}", current_hash);
+                return Err(anyhow!(
+                    "Uncommitted changes in '{}', please commit or stash them first.",
+                    path.display()
+                ));
+            } else {
+                // Doesn't match anything, and target will overwrite → conflict
+                return Err(anyhow!(
+                    "Untracked or modified file '{}' would be overwritten by checkout.",
+                    path.display()
+                ));
+            }
+        }
+
+        None => {
+            // Target commit does not contain this file — it will be deleted
+            // Safe to delete only if it’s not staged (i.e., not in index)
+            if index_hash.is_some() {
+                println!(
+                    "File {} is staged but not committed and will be deleted.",
+                    path.display()
+                );
+                return Err(anyhow!(
+                    "Uncommitted staged file '{}' would be lost by checkout.",
+                    path.display()
+                ));
+            } else {
+                // Untracked file — Git would keep unless it conflicts,
+                return Ok(false); // ignore untracked files like Git does
+            }
+        }
     }
-
-    Ok(clean)
 }
