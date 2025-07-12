@@ -18,10 +18,13 @@ pub fn run(message: String, a: bool) -> Result<()> {
 
     // Try reading the previous commit's tree hash
     let parent_hash = read_current_commit()?;
-    let parent_tree = read_tree_of_commit(&parent_hash)?;
-    if tree_hash == parent_tree {
-        println!("Nothing to commit — working tree matches last commit.");
-        return Ok(());
+
+    if parent_hash != "0000000000000000000000000000000000000000" {
+        let parent_tree = read_tree_of_commit(&parent_hash)?;
+        if tree_hash == parent_tree {
+            println!("Nothing to commit — working tree matches last commit.");
+            return Ok(());
+        }
     }
 
     let commit_hash = create_commit(&tree_hash, &parent_hash, &message, "Nilotpal Gupta")?;
