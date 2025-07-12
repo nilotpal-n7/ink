@@ -5,6 +5,7 @@ use anyhow::{ anyhow, Result };
 use crate::commands;
 use crate::commands::branch::read_current_branch;
 use crate::utils::enums::AddMode;
+use crate::utils::log::Log;
 use crate::utils::object::{create_commit, create_tree };
 use crate::utils::zip::decompress;
 
@@ -16,19 +17,17 @@ pub fn run(message: String, a: bool) -> Result<()> {
     let tree_hash = create_tree()?;
 
     // Try reading the previous commit's tree hash
-    let parent_hash = read_current_commit().ok();
-    if let Some(ref parent) = parent_hash {
-        let parent_tree = read_tree_of_commit(parent)?;
-
-        if tree_hash == parent_tree {
-            println!("Nothing to commit — working tree matches last commit.");
-            return Ok(());
-        }
+    let parent_hash = read_current_commit()?;
+    let parent_tree = read_tree_of_commit(&parent_hash)?;
+    if tree_hash == parent_tree {
+        println!("Nothing to commit — working tree matches last commit.");
+        return Ok(());
     }
 
-    let comment_hash = create_commit(&tree_hash, parent_hash.as_deref(), &message, "Nilotpal Gupta")?;
-    update_current_commit(&comment_hash)?;
-
+    let commit_hash = create_commit(&tree_hash, &parent_hash, &message, "Nilotpal Gupta")?;
+    update_current_commit(&commit_hash)?;
+    Log::add_log(&parent_hash, "commit", &message)?;
+    
     Ok(())
 }
 
@@ -44,7 +43,7 @@ pub fn read_current_commit() -> Result<String> {
         let ref_path = head_contents.trim_start_matches("ref:").trim();
         let ref_file = root.join(ref_path);
         if !ref_file.exists() {
-            return Err(anyhow!("Reference file {:?} does not exist", ref_file));
+            return Ok(String::from("0000000000000000000000000000000000000000"));
         }
         read_to_string(ref_file)?.trim().to_string()
     } else {

@@ -14,6 +14,7 @@ use crate::commands::commit::{get_branch_commit, read_current_commit, read_tree_
 use crate::utils::dir::remove_empty_parents_up_to;
 use crate::utils::hash::hash_object;
 use crate::utils::index::{Index, IndexEntry};
+use crate::utils::log::Log;
 use crate::utils::zip::decompress;
 use crate::utils::ignore::is_ignored;
 
@@ -24,7 +25,7 @@ pub fn run(b: bool, force: bool, name: String) -> Result<()> {
     }
 
     let current_branch = read_current_branch()?;
-    let current_commit = read_current_commit().ok();
+    let current_commit = read_current_commit()?;
     let current_index = Index::load()?;
     current_index.save_for_branch(&current_branch)?;
 
@@ -32,8 +33,8 @@ pub fn run(b: bool, force: bool, name: String) -> Result<()> {
     let target_commit = Some(get_branch_commit(&name)?)
         .ok_or_else(|| anyhow!("Target branch has no commit"))?;
 
-    let current_tree = if let Some(commit) = &current_commit {
-        get_tree_entries(&read_tree_of_commit(commit)?)?
+    let current_tree = if &current_commit != "0000000000000000000000000000000000000000" {
+        get_tree_entries(&read_tree_of_commit(&current_commit)?)?
     } else {
         HashMap::new()
     };
@@ -129,6 +130,9 @@ pub fn run(b: bool, force: bool, name: String) -> Result<()> {
 
     new_index.save()?;
     println!("Switched to branch '{}'", name);
+    let message = String::from(format!("moving from {} to {}", current_branch, name));
+    Log::add_log(&current_commit, "checkout", &message)?;
+
     Ok(())
 }
 

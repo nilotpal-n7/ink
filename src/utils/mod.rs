@@ -5,3 +5,4 @@ pub mod enums;
 pub mod index;
 pub mod ignore;
 pub mod object;
+pub mod log;

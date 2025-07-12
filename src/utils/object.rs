@@ -147,13 +147,11 @@ pub fn create_tree() -> Result<String> {
 
 /// Creates a commit object from a tree hash and returns the commit hash.
 /// If parent is Some(hash), sets it as the commit's parent.
-pub fn create_commit(tree: &str, parent: Option<&str>, message: &str, author: &str) -> Result<String> {
+pub fn create_commit(tree: &str, parent_hash: &str, message: &str, author: &str) -> Result<String> {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
     let mut content = format!("tree {}\n", tree);
-    if let Some(parent_hash) = parent {
-        content += &format!("parent {}\n", parent_hash);
-    }
+    content += &format!("parent {}\n", parent_hash);
     content += &format!(
         "author {} {} +0000\ncommitter {} {} +0000\n\n{}\n",
         author, timestamp, author, timestamp, message
