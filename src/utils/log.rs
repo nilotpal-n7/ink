@@ -26,7 +26,7 @@ pub struct Log {
 
 impl Log {
     pub fn add_log(parent_hash: &str, log_type: &str, message: &str) -> Result<()> {
-        let root = Path::new(".");
+        let root = Path::new(".ink");
         let log_head = root.join("logs").join("HEAD");
         let current_branch = read_current_branch()?;
         let log_ref_head = root.join("logs").join("refs").join(current_branch);
@@ -61,8 +61,9 @@ impl Log {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn read_log() -> Result<Self> {
-        let root = Path::new(".");
+        let root = Path::new(".ink");
         let log_head = root.join("logs").join("HEAD");
         let mut entries = Vec::new();
 
