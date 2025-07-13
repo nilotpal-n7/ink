@@ -29,7 +29,9 @@ pub fn run(message: String, a: bool) -> Result<()> {
 
     let commit_hash = create_commit(&tree_hash, &parent_hash, &message, "Nilotpal Gupta")?;
     update_current_commit(&commit_hash)?;
-    Log::add_log(&parent_hash, "commit", &message)?;
+    let mut log = Log::load()?;
+    log.add(parent_hash, "commit".to_string(), message)?;
+    log.save()?;
     
     Ok(())
 }
