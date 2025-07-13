@@ -5,7 +5,7 @@ use anyhow::{ anyhow, Result };
 use crate::commands;
 use crate::commands::branch::read_current_branch;
 use crate::utils::enums::AddMode;
-use crate::utils::log::Log;
+use crate::utils::log::log_commit;
 use crate::utils::object::{create_commit, create_tree };
 use crate::utils::zip::decompress;
 
@@ -29,10 +29,7 @@ pub fn run(message: String, a: bool) -> Result<()> {
 
     let commit_hash = create_commit(&tree_hash, &parent_hash, &message, "Nilotpal Gupta")?;
     update_current_commit(&commit_hash)?;
-
-    let mut log = Log::load(Path::new(".ink/logs/HEAD"))?;
-    log.log_commit(parent_hash.clone(), message)?;
-    log.save()?;
+    log_commit(&message)?;
 
     Ok(())
 }

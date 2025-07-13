@@ -14,7 +14,7 @@ use crate::commands::commit::{get_branch_commit, read_current_commit, read_tree_
 use crate::utils::dir::remove_empty_parents_up_to;
 use crate::utils::hash::hash_object;
 use crate::utils::index::{Index, IndexEntry};
-use crate::utils::log::Log;
+use crate::utils::log::log_checkout;
 use crate::utils::zip::decompress;
 use crate::utils::ignore::is_ignored;
 
@@ -129,10 +129,7 @@ pub fn run(b: bool, force: bool, name: String) -> Result<()> {
 
     new_index.save()?;
     println!("Switched to branch '{}'", name);
-
-    let mut log = Log::load(Path::new(".ink/logs/HEAD"))?;
-    log.log_checkout(current_commit.clone(), target_commit.clone(), format!("switched from '{}' to '{}'", current_branch, name))?;
-    log.save()?;
+    log_checkout(current_commit.clone(), target_commit.clone(), &name)?;
 
     Ok(())
 }
