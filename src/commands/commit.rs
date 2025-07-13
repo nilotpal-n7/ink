@@ -29,10 +29,11 @@ pub fn run(message: String, a: bool) -> Result<()> {
 
     let commit_hash = create_commit(&tree_hash, &parent_hash, &message, "Nilotpal Gupta")?;
     update_current_commit(&commit_hash)?;
-    let mut log = Log::load()?;
-    log.add(parent_hash, "commit".to_string(), message)?;
+
+    let mut log = Log::load(Path::new(".ink/logs/HEAD"))?;
+    log.log_commit(parent_hash.clone(), message)?;
     log.save()?;
-    
+
     Ok(())
 }
 

@@ -5,6 +5,7 @@ use colored::Colorize;
 use rayon::prelude::*;
 
 use crate::commands::commit::read_current_commit;
+use crate::utils::log::Log;
 
 pub fn run(name: Option<String>) -> Result<()> {
     match name {
@@ -19,9 +20,13 @@ pub fn run(name: Option<String>) -> Result<()> {
 
             let current_commit = read_current_commit()?;
             create_dir_all(branch_path.parent().unwrap())?;
-            write(branch_path, current_commit)?;
+            write(branch_path, &current_commit)?;
             
             println!("Created branch '{}'", n);
+            let mut log = Log::load(Path::new(".ink/logs/HEAD"))?;
+
+            log.log_branch(current_commit.clone(), current_commit.clone(), format!("created branch '{}'", n))?;
+            log.save()?;
         }
 
         None => {

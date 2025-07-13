@@ -129,9 +129,9 @@ pub fn run(b: bool, force: bool, name: String) -> Result<()> {
 
     new_index.save()?;
     println!("Switched to branch '{}'", name);
-    let message = String::from(format!("moving from {} to {}", current_branch, name));
-    let mut log = Log::load()?;
-    log.add(current_commit, "checkout".to_string(), message)?;
+
+    let mut log = Log::load(Path::new(".ink/logs/HEAD"))?;
+    log.log_checkout(current_commit.clone(), target_commit.clone(), format!("switched from '{}' to '{}'", current_branch, name))?;
     log.save()?;
 
     Ok(())
