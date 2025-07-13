@@ -19,7 +19,7 @@ pub fn run(message: String, a: bool) -> Result<()> {
     // Try reading the previous commit's tree hash
     let parent_hash = read_current_commit()?;
 
-    if parent_hash != "0000000000000000000000000000000000000000" {
+    if parent_hash != "0000000000000000000000000000000000000000000000000000000000000000" {
         let parent_tree = read_tree_of_commit(&parent_hash)?;
         if tree_hash == parent_tree {
             println!("Nothing to commit — working tree matches last commit.");
@@ -48,7 +48,7 @@ pub fn read_current_commit() -> Result<String> {
         let ref_path = head_contents.trim_start_matches("ref:").trim();
         let ref_file = root.join(ref_path);
         if !ref_file.exists() {
-            return Ok(String::from("0000000000000000000000000000000000000000"));
+            return Ok(String::from("0000000000000000000000000000000000000000000000000000000000000000"));
         }
         read_to_string(ref_file)?.trim().to_string()
     } else {
@@ -88,7 +88,7 @@ pub fn read_tree_of_commit(commit_hash: &str) -> Result<String> {
 pub fn get_branch_commit(branch: &str) -> Result<String> {
     let path = Path::new(".ink").join("refs").join("heads").join(branch);
     if !path.exists() {
-        return Ok("0000000000000000000000000000000000000000".to_string());
+        return Ok("0000000000000000000000000000000000000000000000000000000000000000".to_string());
     }
 
     let content = std::fs::read_to_string(path)?;

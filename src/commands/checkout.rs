@@ -32,7 +32,7 @@ pub fn run(b: bool, force: bool, name: String) -> Result<()> {
     // Target commit and branch info
     let target_commit = get_branch_commit(&name)?;
 
-    let current_tree = if &current_commit != "0000000000000000000000000000000000000000" {
+    let current_tree = if &current_commit != "0000000000000000000000000000000000000000000000000000000000000000" {
         get_tree_entries(&read_tree_of_commit(&current_commit)?)?
     } else {
         HashMap::new()
