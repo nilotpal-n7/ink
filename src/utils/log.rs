@@ -48,7 +48,7 @@ impl Log {
         Ok(Log {entries})
     }
 
-    pub fn add(&mut self, parent_hash:String , log_type:String , message:String ) -> Result<()> {
+    pub fn add(&mut self, parent_hash: String, log_type: String, message: String ) -> Result<()> {
         let current_hash = read_current_commit()?;
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let author = String::from("Nilotpal Gupta");

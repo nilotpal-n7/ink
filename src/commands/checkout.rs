@@ -131,7 +131,7 @@ pub fn run(b: bool, force: bool, name: String) -> Result<()> {
     println!("Switched to branch '{}'", name);
     let message = String::from(format!("moving from {} to {}", current_branch, name));
     let mut log = Log::load()?;
-    log.add(current_commit, "commit".to_string(), message)?;
+    log.add(current_commit, "checkout".to_string(), message)?;
     log.save()?;
 
     Ok(())
