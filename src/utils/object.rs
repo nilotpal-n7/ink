@@ -7,7 +7,7 @@ use rayon::prelude::*;
 
 use crate::utils::hash::hash_object;
 use crate::utils::index::Index;
-use crate::utils::zip::compress;
+use crate::utils::zip::{compress, decompress};
 
 pub fn create_blob(path: PathBuf) -> Result<String> {
     let content = read(path)?;
@@ -169,4 +169,51 @@ pub fn create_commit(tree: &str, parent_hash: &str, message: &str, author: &str)
     }
 
     Ok(hash)
+}
+
+/// Reads a tree object by its hash and returns entries (path, type, hash)
+pub fn read_tree_object(hash: &str) -> Result<Vec<(PathBuf, String, String)>> {
+    let path = Path::new(".ink/objects").join(&hash[..2]).join(&hash[2..]);
+    let data = read(path)?;
+    let decompressed = decompress(data)?;
+    let text = std::str::from_utf8(&decompressed)?;
+
+    let (_, body) = text
+        .split_once('\0')
+        .ok_or_else(|| anyhow!("Invalid tree object"))?;
+
+    let mut entries = Vec::new();
+
+    for line in body.lines() {
+        // Format: "<mode> <type> <hash>\t<name>"
+        let (meta, name) = line.split_once('\t')
+            .ok_or_else(|| anyhow!("Invalid tree line: {}", line))?;
+
+        let parts: Vec<&str> = meta.split_whitespace().collect();
+        if parts.len() != 3 {
+            return Err(anyhow!("Malformed tree entry: {}", line));
+        }
+
+        let obj_type = parts[1].to_string();
+        let obj_hash = parts[2].to_string();
+        let path = PathBuf::from(name);
+
+        entries.push((path, obj_type, obj_hash));
+    }
+
+    Ok(entries)
+}
+
+/// Reads a blob object by hash and returns its raw content
+pub fn read_blob_object(hash: &str) -> Result<Vec<u8>> {
+    let path = Path::new(".ink/objects").join(&hash[..2]).join(&hash[2..]);
+    let data = read(path)?;
+    let decompressed = decompress(data)?;
+
+    let body = decompressed
+        .splitn(2, |b| *b == 0)
+        .nth(1)
+        .ok_or_else(|| anyhow!("Invalid blob object"))?;
+
+    Ok(body.to_vec())
 }

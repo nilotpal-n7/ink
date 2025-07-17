@@ -61,7 +61,10 @@ enum Commands {
         force: bool,
 
         name: String,
-    }
+    },
+     Restore {
+        target: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -109,6 +112,7 @@ fn main() -> Result<()> {
         Commands::Commit { message, a } => commands::commit::run(message, a)?,
         Commands::Branch { name } => commands::branch::run(name)?,
         Commands::Checkout { b, force, name } => commands::checkout::run(b, force, name)?,
+        Commands::Restore { target } => commands::restore::run(target)?,
     }
 
     Ok(())
