@@ -1,5 +1,3 @@
-// app/lib/ast-parser.ts
-
 export function parseCodeIntoSemanticChunks(code: string, filePath: string) {
   const lines = code.split('\n');
   const chunks = [];
@@ -16,9 +14,9 @@ export function parseCodeIntoSemanticChunks(code: string, filePath: string) {
     // If we hit a new function/class boundary
     if (boundaryRegex.test(line)) {
       // Save the previous block if it has content
-      if (currentChunk.join('').trim().length > 0) {
+      if (currentChunk.length > 0) {
         chunks.push({
-          code: currentChunk.join('\n'),
+          code: currentChunk.join('\n').trimEnd(),
           lines: `${startLine}-${i}`,
           filePath,
           blockName
@@ -36,10 +34,10 @@ export function parseCodeIntoSemanticChunks(code: string, filePath: string) {
     currentChunk.push(line);
   }
   
-  // Push the final chunk
-  if (currentChunk.join('').trim().length > 0) {
+  // Explicitly handle end-of-file scenario for the final chunk
+  if (currentChunk.length > 0 || currentChunk.join('').trim().length > 0) {
     chunks.push({
-      code: currentChunk.join('\n'),
+      code: currentChunk.join('\n').trimEnd(),
       lines: `${startLine}-${lines.length}`,
       filePath,
       blockName
